@@ -8,15 +8,7 @@ else
     kill -9 $PID
 fi 
 
-PYTHON_SCRIPT_NAME="RobotModeController.py"
-PID=$(ps aux | grep "$PYTHON_SCRIPT_NAME" | grep -v grep | awk '{print $2}')
-if [ -z "$PID" ]; then
-    echo "No running process found for $PYTHON_SCRIPT_NAME."
-else
-    kill -9 $PID
-fi 
-
-PYTHON_SCRIPT_NAME="RobotMoveController.py"
+PYTHON_SCRIPT_NAME="HighLevelController.py"
 PID=$(ps aux | grep "$PYTHON_SCRIPT_NAME" | grep -v grep | awk '{print $2}')
 if [ -z "$PID" ]; then
     echo "No running process found for $PYTHON_SCRIPT_NAME."

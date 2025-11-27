@@ -2,10 +2,10 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from booster_interface.msg import FallDownState, Odometer, LowState
-from booster_robotics_sdk_python import RobotMode, B1HandAction
+from booster_robotics_sdk_python import RobotMode, B1HandAction, B1HandIndex
 from sensor_msgs.msg import Joy
 from cv_bridge import CvBridge
-from std_msgs.msg import Int32, String
+from std_msgs.msg import Int32, String, Float64MultiArray
 from geometry_msgs.msg import Twist, Vector3
 from std_srvs.srv import Empty, Trigger, SetBool
 import time
@@ -39,6 +39,7 @@ class MainController(Node):
         self.pub_say = self.create_publisher(String, "/pcms/say", 10)
         self.pub_cmd_vel = self.create_publisher(Twist, "/pcms/cmd_vel", 10)
         self.pub_move_head = self.create_publisher(Vector3, "/pcms/MoveHead", 10)
+        self.pub_move_hand_end = self.create_publisher(Float64MultiArray, "/pcms/move_hand_end", 10)
 
         self.cli_switch_hand_end = self.create_client(SetBool, "/pcms/SwitchHandEnd")
         # self.cli_dance_0 = self.create_client(Empty, "/pcms/dance0")
@@ -47,6 +48,7 @@ class MainController(Node):
         self.cli_walking_mode = self.create_client(Trigger, "/pcms/WalkingMode")
         self.cli_wave_hand = self.create_client(SetBool, "/pcms/WaveHand")
         self.cli_getup = self.create_client(Trigger, "/pcms/GetUp")
+        self.cli_liedown = self.create_client(Trigger, "/pcms/LieDown")
 
         time.sleep(3)
         self.func_setup(self)
@@ -89,6 +91,11 @@ class MainController(Node):
         msg.angular.z = vz 
         self.pub_cmd_vel.publish(msg)
 
+    def move_hand_end(self, px, py, pz, ox, oy, oz, t, i: B1HandIndex):
+        msg = Float64MultiArray()
+        msg.data = [px, py, pz, ox, oy, oz, float(t), float(i)]
+        self.pub_move_hand_end.publish(msg)
+
     def switch_hand_end(self, switch_on: bool):
         self.cli_switch_hand_end.call_async(SetBool.Request(data=switch_on))
 
@@ -116,6 +123,10 @@ class MainController(Node):
 
     def getup(self, delay=10.0):
         self.cli_getup.call_async(Trigger.Request())
+        time.sleep(delay)
+
+    def liedown(self, delay=10.0):
+        self.cli_liedown.call_async(Trigger.Request())
         time.sleep(delay)
 
     def update(self):

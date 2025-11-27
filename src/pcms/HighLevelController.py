@@ -5,8 +5,10 @@ from std_msgs.msg import Int32
 from booster_robotics_sdk_python import (
     ChannelFactory, B1LocoClient,
     RobotMode, GetModeResponse,
-    B1HandAction
+    B1HandAction, B1HandIndex,
+    Posture, Position, Orientation
 )
+from std_msgs.msg import Float64MultiArray
 from std_srvs.srv import Empty, Trigger, SetBool
 import time
 
@@ -25,6 +27,8 @@ class HighLevelController(Node):
         self.last_vyaw = 0.0
         self.last_move_update_time = time.time()
 
+        self.sub_move_hand_end = self.create_subscription(Float64MultiArray, "/pcms/move_hand_end", self.callback_move_hand_end, 10)
+
         self.pub_get_mode = self.create_publisher(Int32, "/pcms/GetMode", 10)
 
         self.srv_switch_hand_end = self.create_service(SetBool, "/pcms/SwitchHandEnd", self.callback_switch_hand_end)
@@ -42,7 +46,8 @@ class HighLevelController(Node):
         self.srv_walking_mode = self.create_service(Trigger, "/pcms/WalkingMode", self.callback_walking_mode)
         self.srv_wavehand = self.create_service(SetBool, "/pcms/WaveHand", self.callback_wavehand)
         self.srv_getup = self.create_service(Trigger, "/pcms/GetUp", self.callback_getup)
-
+        self.srv_liedown = self.create_service(Trigger, "/pcms/LieDown", self.callback_liedown)
+        
         self.timer = self.create_timer(0.5, self.update)
         self.get_logger().info("HighLevel SDK is Ready.")
 
@@ -54,6 +59,28 @@ class HighLevelController(Node):
         self.last_vy = vy
         self.last_vyaw = vyaw
         self.last_move_update_time = time.time()
+
+    def do_MoveHandEndEffectorV2(self, px, py, pz, ox, oy, oz, t: int, i: B1HandIndex):
+        tar_posture = Posture()
+        tar_posture.position = Position(0.35, 0.25, 0.1)
+        tar_posture.orientation = Orientation(-1.57, -1.57, 0.0)
+        res = self.client.MoveHandEndEffectorV2(tar_posture, 2000, B1HandIndex.kLeftHand)
+
+        # tar_posture = Posture()
+        # tar_posture.position = Position(0.0, 0.0, 0.0)
+        # tar_posture.orientation = Orientation(0.0, 0.0, 0.0)
+        # res = self.client.MoveHandEndEffectorV2(tar_posture, 2000, B1HandIndex.kRightHand)
+
+        # tar_posture = Posture()
+        # tar_posture.position = Position(px, py, pz)
+        # tar_posture.orientation = Orientation(ox, oy, oz)
+        # print(px, py, pz, ox, oy, oz, t, i)
+        # res = self.client.MoveHandEndEffector(tar_posture, t, i)
+        # time.sleep(5)
+        # if res != 0:
+        #     self.get_logger().warn(f"手未端移動出現問題：{res} ({px}, {py}, {pz}), ({ox}, {oy}, {oz}), {t}, {i}")
+        # else:
+        #     self.get_logger().info(f"手未端移動到：({px}, {py}, {pz}), ({ox}, {oy}, {oz}), {t}, {i}")
 
     def do_ChangeMode(self, mode: RobotMode):
         res = self.client.ChangeMode(mode)
@@ -88,6 +115,16 @@ class HighLevelController(Node):
         else:
             self.get_logger().info("開/關手臂控制模式：%s" % switch_on)
         return res
+
+    def callback_move_hand_end(self, msg: Float64MultiArray):
+        if len(msg.data) != 8:
+            self.get_logger().warn(f"移動手未端需要8個參數，現在有{len(msg.data)}個。")
+        else:
+            px, py, pz, ox, oy, oz, t, i = msg.data
+            t = int(t)
+            if int(i) == 0: i = B1HandIndex.kLeftHand
+            if int(i) == 1: i = B1HandIndex.kRightHand
+            self.do_MoveHandEndEffectorV2(px, py, pz, ox, oy, oz, t, i)
 
     def callback_cmd_vel(self, msg: Twist):
         vx = msg.linear.x 
@@ -132,12 +169,20 @@ class HighLevelController(Node):
     def callback_getup(self, request, response):
         res = self.client.GetUp()
         if res != 0:
-            self.get_logger().warn("起身動作出現問題：" % res)
+            self.get_logger().warn("起身動作出現問題：%d" % res)
         else:
             self.get_logger().info("開始起身動作。")
         response.success = res == 0
         return response
 
+    def callback_liedown(self, request, response):
+        res = self.client.LieDown()
+        if res != 0:
+            self.get_logger().warn("躺下動作出現問題：%d" % res)
+        else:
+            self.get_logger().info("開始躺下動作。")
+        response.success = res == 0
+        return response
 
     def update(self):
         # 如果多於1秒沒有收到控制指令會停止
