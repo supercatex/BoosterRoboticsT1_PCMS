@@ -1,5 +1,7 @@
 #!/bin/bash
 
+./scripts/stop_controllers.sh
+
 echo "正在啟動語音合成功能..."
 python3 ./src/pcms/RobotVoiceController.py &
 
@@ -12,4 +14,4 @@ python3 ./src/pcms/RobotMoveController.py &
 echo "正在啟動頭部控制功能..."
 python3 ./src/pcms/RobotHeadController.py &
 
-echo "完成"
+echo "啟動完成"

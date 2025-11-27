@@ -32,4 +32,4 @@ else
     kill -9 $PID
 fi 
 
-echo "完成"
+echo "關閉完成"
