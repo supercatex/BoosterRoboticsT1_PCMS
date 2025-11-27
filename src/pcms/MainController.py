@@ -2,11 +2,12 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from booster_interface.msg import FallDownState, Odometer, LowState
-from booster_robotics_sdk_python import RobotMode
+from booster_robotics_sdk_python import RobotMode, B1HandAction
 from sensor_msgs.msg import Joy
 from cv_bridge import CvBridge
 from std_msgs.msg import Int32, String
 from geometry_msgs.msg import Twist, Vector3
+from std_srvs.srv import Empty, Trigger, SetBool
 import time
 import cv2
 
@@ -36,16 +37,24 @@ class MainController(Node):
         self.sub_get_mode = self.create_subscription(Int32, "/pcms/GetMode", self.callback_get_mode, 10)
 
         self.pub_say = self.create_publisher(String, "/pcms/say", 10)
-        self.pub_change_mode = self.create_publisher(Int32, "/pcms/ChangeMode", 10)
         self.pub_cmd_vel = self.create_publisher(Twist, "/pcms/cmd_vel", 10)
         self.pub_move_head = self.create_publisher(Vector3, "/pcms/MoveHead", 10)
+
+        self.cli_switch_hand_end = self.create_client(SetBool, "/pcms/SwitchHandEnd")
+        # self.cli_dance_0 = self.create_client(Empty, "/pcms/dance0")
+        self.cli_handshake = self.create_client(SetBool, "/pcms/Handshake")
+        self.cli_prepare_mode = self.create_client(Trigger, "/pcms/PrepareMode")
+        self.cli_walking_mode = self.create_client(Trigger, "/pcms/WalkingMode")
+        self.cli_wave_hand = self.create_client(SetBool, "/pcms/WaveHand")
+        self.cli_getup = self.create_client(Trigger, "/pcms/GetUp")
+
+        time.sleep(3)
+        self.func_setup(self)
 
         self.fps = 0.0
         self.last_update_time = time.time()
         self.timer = self.create_timer(self.update_time, self.update)
 
-        time.sleep(1)
-        self.func_setup(self)
 
     def callback_image(self, msg):
         self.image = self.cb.imgmsg_to_cv2(msg, "bgr8")
@@ -73,11 +82,6 @@ class MainController(Node):
         msg.data = text
         self.pub_say.publish(msg)
 
-    def change_mode(self, mode):
-        msg = Int32()
-        msg.data = mode
-        self.pub_change_mode.publish(msg)
-
     def cmd_vel(self, vx, vy, vz):
         msg = Twist()
         msg.linear.x = vx 
@@ -85,11 +89,34 @@ class MainController(Node):
         msg.angular.z = vz 
         self.pub_cmd_vel.publish(msg)
 
+    def switch_hand_end(self, switch_on: bool):
+        self.cli_switch_hand_end.call_async(SetBool.Request(data=switch_on))
+
     def move_head(self, pitch, yaw):
         msg = Vector3()
         msg.y = pitch
         msg.z = yaw
         self.pub_move_head.publish(msg)
+
+    def handshake(self, is_open: bool, delay=3.0):
+        self.cli_handshake.call_async(SetBool.Request(data=is_open))
+        time.sleep(delay)
+    
+    def prepare_mode(self, delay=3.0):
+        self.cli_prepare_mode.call_async(Trigger.Request())
+        time.sleep(delay)
+    
+    def walking_mode(self, delay=3.0):
+        self.cli_walking_mode.call_async(Trigger.Request())
+        time.sleep(delay)
+
+    def wave_hand(self, is_open: bool, delay=3.0):
+        self.cli_wave_hand.call_async(SetBool.Request(data=is_open))
+        time.sleep(delay)
+
+    def getup(self, delay=10.0):
+        self.cli_getup.call_async(Trigger.Request())
+        time.sleep(delay)
 
     def update(self):
         try:
