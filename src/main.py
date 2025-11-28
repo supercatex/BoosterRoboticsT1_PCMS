@@ -2,6 +2,8 @@ import rclpy
 from pcms.MainController import MainController
 from ultralytics import YOLO
 import cv2
+import numpy as np
+from booster_robotics_sdk_python import B1JointIndex
 
 
 def setup(self: MainController):
@@ -12,7 +14,7 @@ def setup(self: MainController):
 def update(self: MainController):
     h, w, c = self.image.shape
     poses = self.model_pose(self.image, verbose=False)[0]
-    cx, cy, d = -1, -1, 10000
+    cx, cy, rd = -1, -1, 10000
     for pose in poses.keypoints.xy:
         x1, y1, x2, y2 = w, h, -1, -1
         for x, y in pose.cpu().numpy():
@@ -23,29 +25,38 @@ def update(self: MainController):
             mx, my = (x1 + x2) // 2, (y1 + y2) // 2
             mx, my = map(int, (mx, my))
             mz = self.depth[my][mx]
-            if mz > 0 and mz < d:
-                cx, cy, d = mx, my, mz
+            if mz > 0 and mz < rd:
+                cx, cy, rd = mx, my, mz
             x1, y1, x2, y2 = map(int, (x1, y1, x2, y2))
             cv2.rectangle(self.image, (x1, y1), (x2, y2), (0, 255, 0), 2)
     # print(cx, cy, d)
     vx, vy, vz = 0.0, 0.0, 0.0
+    pitch, yaw = 0.0, 0.0
     if cx != -1:
-        mz = 1.2
-        ez = w // 2 - cx
-        pz = mz / (w // 2)
+        rx = (cx - w / 2) * 2 * rd * np.tan(90 * np.pi / 180 / 2) / w
+        ry = (cy - h / 2) * 2 * rd * np.tan(65 * np.pi / 180 / 2) / h
+        cur_pitch = self.low_state.motor_state_serial[B1JointIndex.kHeadPitch].q
+        cur_yaw = self.low_state.motor_state_serial[B1JointIndex.kHeadYaw].q
+        # pitch = cur_pitch + np.arctan2(ry, rd)
+        yaw = cur_pitch + np.arctan2(-rx, rd)
+
+        mz = 0.8
+        ez = w // 2 - (cx + yaw * 50)
+        pz = mz / (w // 2) * 5
         vz = pz * ez
         vz = max(-mz, min(vz, mz))
 
-        mx = 0.8
-        ed = d - 600
+        mx = 1.2
+        ed = rd - 600
         pd = mx / 2000
         vx = pd * ed 
-        if d == 0: vx = 0
+        if rd == 0: vx = 0
         vx = max(-mx, min(vx, mx))
 
     # print(vx, vy, vz)
     print("\rFPS: ", self.fps, end="")
     self.cmd_vel(vx, vy, vz)
+    self.move_head(pitch, yaw)
 
 
 if __name__ == "__main__":
