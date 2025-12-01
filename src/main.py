@@ -16,80 +16,51 @@ def update(self: MainController):
     poses = self.model_pose(self.image, verbose=False)[0]
     cx, cy, rd = -1, -1, 10000
     for pose in poses.keypoints.xy:
-        if len(pose) == 0: continue 
-        cx, cy = map(int , pose[0])
-        if self.depth[cy][cx] == 0: continue
-        rd = self.depth[cy][cx]
-        # x1, y1, x2, y2 = w, h, -1, -1
-        # for x, y in pose.cpu().numpy():
-        #     if x == 0 and y == 0: continue
-        #     x1, y1 = min(x1, x), min(y1, y)
-        #     x2, y2 = max(x2, x), max(y2, y)
-        # if x1 < x2:
-        #     mx, my = (x1 + x2) // 2, (y1 + y2) // 2
-        #     mx, my = map(int, (mx, my))
-        #     mz = self.depth[my][mx]
-        #     if mz > 0 and mz < rd:
-        #         cx, cy, rd = mx, my, mz
-        #     x1, y1, x2, y2 = map(int, (x1, y1, x2, y2))
-        #     cv2.rectangle(self.image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    # print(cx, cy, d)
+        # if len(pose) == 0: continue 
+        # cx, cy = map(int , pose[0])
+
+        # if self.depth[cy][cx] == 0: continue
+        # rd = self.depth[cy][cx]
+        x1, y1, x2, y2 = w, h, -1, -1
+        for x, y in pose.cpu().numpy():
+            if x == 0 and y == 0: continue
+            x1, y1 = min(x1, x), min(y1, y)
+            x2, y2 = max(x2, x), max(y2, y)
+        if x1 < x2:
+            mx, my = (x1 + x2) // 2, (y1 + y2) // 2
+            mx, my = map(int, (mx, my))
+            mz = self.depth[my][mx]
+            if mz > 0 and mz < rd:
+                cx, cy, rd = mx, my, mz
+            x1, y1, x2, y2 = map(int, (x1, y1, x2, y2))
+            cv2.rectangle(self.image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    print(cx, cy, rd)
+
     vx, vy, vz = 0.0, 0.0, 0.0
     pitch, yaw = 0.0, 0.0
     if cx != -1:
-        rx = (cx - w / 2) * 2 * rd * np.tan(94 * np.pi / 180 / 2) / w
-        ry = (cy - h / 2) * 2 * rd * np.tan(68 * np.pi / 180 / 2) / h
+        hx, hy, hz = self.get_xyz_from_rgbd(cx, cy, rd, Frame.kHead)
         cur_pitch = self.low_state.motor_state_serial[B1JointIndex.kHeadPitch].q
         cur_yaw = self.low_state.motor_state_serial[B1JointIndex.kHeadYaw].q
-        pitch = cur_pitch + np.arctan2(ry, rd)
-        yaw = cur_yaw + np.arctan2(-rx, rd)
+        pitch = cur_pitch + np.arctan2(-hz, rd)
+        yaw = cur_yaw + np.arctan2(hy, rd)
+        # print(rx, ry, rz)
+
+        bx, by, bz = self.get_xyz_from_rgbd(cx, cy, rd, Frame.kBody)
+        print(bx, by, bz)
 
         mz = 0.8
-        ez = w // 2 - (cx - yaw * 400)
-        pz = mz / (w // 2) * 5
-        vz = pz * ez
+        vz = 0.005 * (by - 0.0)
         vz = max(-mz, min(vz, mz))
 
         mx = 1.2
-        ed = rd - 600
-        pd = mx / 2000
-        vx = pd * ed 
+        vx = 0.0007 * (bx - 600)
         if rd == 0: vx = 0
         vx = max(-mx, min(vx, mx))
 
-    # print("\rFPS: ", self.fps, end=" ")
-    pitch = self.low_state.motor_state_serial[B1JointIndex.kHeadPitch].q
-    yaw = self.low_state.motor_state_serial[B1JointIndex.kHeadYaw].q
-    rx = (cx - w / 2) * 2 * rd * np.tan(94 * np.pi / 180 / 2) / w
-    ry = (cy - h / 2) * 2 * rd * np.tan(68 * np.pi / 180 / 2) / h
-    
-    # wy, wx = ry, rx  
-    # if abs(np.pi / 2 - pitch) > 0.01:
-    #     wy = (rd - np.tan(np.pi / 2 - pitch) * ry) * np.sin(pitch)
-    # if abs(np.pi / 2 - yaw) > 0.01:
-    #     wx = (np.tan(np.pi / 2 - yaw) * rx - rd) * np.sin(yaw)
-    # wd = rd / (np.cos(pitch) * np.cos(yaw)) + wy * np.tan(pitch) + wx * np.tan(yaw)
-
-    # print("ORG: %.2f, %.2f, %.2f" % (rx, ry, rd))
-    # print("PITCH: %.2f, YAW: %.2f" % (pitch, yaw))
-    # print("NEW: %.2f, %.2f, %.2f" % (wx, wy, wd))
-
-    # self.transform(vx, vy, vz, 0.0, pitch, yaw)
-
-    # res = Transform()
-    # res.position.x = 100
-    # self.client.GetFrameTransform(Frame.kHead, Frame.kBody, res)
-    # print("RES: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f" % (
-    #     res.position.x, res.position.y, res.position.z,
-    #     res.orientation.x, res.orientation.y, res.orientation.z, res.orientation.w
-    # ))
-    
-    if cx != -1:
-        p2 = self.get_xyz_from_rgbd(cx, cy, rd, Frame.kBody)
-        print("%.2f %.2f %.2f" % (p2[0], p2[1], p2[2]))
-
-    # self.cmd_vel(vx, vy, vz)
-    # self.move_head(pitch, yaw)
+    self.cmd_vel(vx, vy, vz)
+    pitch = 0.0
+    self.move_head(pitch, yaw)
 
 
 if __name__ == "__main__":

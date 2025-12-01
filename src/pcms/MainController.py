@@ -208,18 +208,18 @@ class MainController(Node):
 
         tf = Transform()
         self.client.GetFrameTransform(Frame.kHead, base, tf)
-        print("RES: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f" % (
-            tf.position.x, tf.position.y, tf.position.z,
-            tf.orientation.x, tf.orientation.y, tf.orientation.z, tf.orientation.w
-        ))
+        # print("RES: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f" % (
+        #     tf.position.x, tf.position.y, tf.position.z,
+        #     tf.orientation.x, tf.orientation.y, tf.orientation.z, tf.orientation.w
+        # ))
         roll, pitch, yaw = self.euler_from_quaternion(tf.orientation)
         p = np.array([wx, wy, wz])
         p = self.rot_z(-yaw, p)
         p = self.rot_y(-pitch, p)
         p = self.rot_x(-roll, p)
-        p[0] += tf.position.x 
-        p[1] += tf.position.y 
-        p[2] += tf.position.z
+        p[0] -= tf.position.x 
+        p[1] -= tf.position.y 
+        p[2] -= tf.position.z
         return p
 
     def transform(self, px, py, pz, roll, pitch, yaw, src: Frame = Frame.kHead, dst: Frame = Frame.kBody):
