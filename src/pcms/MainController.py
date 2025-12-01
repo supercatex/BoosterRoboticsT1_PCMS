@@ -2,7 +2,11 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from booster_interface.msg import FallDownState, Odometer, LowState
-from booster_robotics_sdk_python import RobotMode, B1HandAction, B1HandIndex
+from booster_robotics_sdk_python import (
+    ChannelFactory, B1LocoClient,
+    RobotMode, B1HandAction, B1HandIndex,
+    Position, Orientation, Transform, Frame
+)
 from sensor_msgs.msg import Joy
 from cv_bridge import CvBridge
 from std_msgs.msg import Int32, String, Float64MultiArray
@@ -10,6 +14,7 @@ from geometry_msgs.msg import Twist, Vector3
 from std_srvs.srv import Empty, Trigger, SetBool
 import time
 import cv2
+import numpy as np
 
 
 class MainController(Node):
@@ -49,6 +54,10 @@ class MainController(Node):
         self.cli_wave_hand = self.create_client(SetBool, "/pcms/WaveHand")
         self.cli_getup = self.create_client(Trigger, "/pcms/GetUp")
         self.cli_liedown = self.create_client(Trigger, "/pcms/LieDown")
+
+        ChannelFactory.Instance().Init(0, "192.168.10.102")
+        self.client = B1LocoClient()
+        self.client.Init()
 
         time.sleep(3)
         self.func_setup(self)
@@ -129,11 +138,104 @@ class MainController(Node):
         self.cli_liedown.call_async(Trigger.Request())
         time.sleep(delay)
 
+    def euler_from_quaternion(self, quaternion):
+        x = quaternion.x
+        y = quaternion.y
+        z = quaternion.z
+        w = quaternion.w
+
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = np.arctan2(sinr_cosp, cosr_cosp)
+
+        sinp = 2 * (w * y - z * x)
+        pitch = np.arcsin(sinp)
+
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = np.arctan2(siny_cosp, cosy_cosp)
+
+        return roll, pitch, yaw
+
+    def quaternion_from_euler(self, roll, pitch, yaw):
+        cy = np.cos(yaw * 0.5)
+        sy = np.sin(yaw * 0.5)
+        cp = np.cos(pitch * 0.5)
+        sp = np.sin(pitch * 0.5)
+        cr = np.cos(roll * 0.5)
+        sr = np.sin(roll * 0.5)
+
+        q = [0] * 4
+        q[0] = cy * cp * cr + sy * sp * sr
+        q[1] = cy * cp * sr - sy * sp * cr
+        q[2] = sy * cp * sr + cy * sp * cr
+        q[3] = sy * cp * cr - cy * sp * sr
+
+        return q
+    
+    def rot_x(self, theta, point):
+        m = np.array([
+            [1, 0, 0],
+            [0, np.cos(theta), -np.sin(theta)],
+            [0, np.sin(theta), np.cos(theta)]
+        ])
+        return np.dot(point, m.T)
+
+    def rot_y(self, theta, point):
+        m = np.array([
+            [np.cos(theta), 0, np.sin(theta)],
+            [0, 1, 0],
+            [-np.sin(theta), 0, np.cos(theta)]
+        ])
+        return np.dot(point, m.T)
+
+    def rot_z(self, theta, point):
+        m = np.array([
+            [np.cos(theta), -np.sin(theta), 0],
+            [np.sin(theta), np.cos(theta), 0],
+            [0, 0, 1]
+        ])
+        return np.dot(point, m.T)
+    
+    def get_xyz_from_rgbd(self, x, y, d, base: Frame = Frame.kHead):
+        h, w, c = self.image.shape
+        rx = (x - w / 2) * 2 * d * np.tan(94 * np.pi / 180 / 2) / w
+        ry = (y - h / 2) * 2 * d * np.tan(68 * np.pi / 180 / 2) / h
+
+        wx = d 
+        wy = -rx 
+        wz = -ry
+
+        tf = Transform()
+        self.client.GetFrameTransform(Frame.kHead, base, tf)
+        print("RES: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f" % (
+            tf.position.x, tf.position.y, tf.position.z,
+            tf.orientation.x, tf.orientation.y, tf.orientation.z, tf.orientation.w
+        ))
+        roll, pitch, yaw = self.euler_from_quaternion(tf.orientation)
+        p = np.array([wx, wy, wz])
+        p = self.rot_z(-yaw, p)
+        p = self.rot_y(-pitch, p)
+        p = self.rot_x(-roll, p)
+        p[0] += tf.position.x 
+        p[1] += tf.position.y 
+        p[2] += tf.position.z
+        return p
+
+    def transform(self, px, py, pz, roll, pitch, yaw, src: Frame = Frame.kHead, dst: Frame = Frame.kBody):
+        res = Transform()
+        self.client.GetFrameTransform(src, dst, res)
+        print("RES: %.2f, %.2f, %.2f" % (
+            res.position.x, res.position.y, res.position.z,
+            res.orientation.x, res.orientation.y, res.orientation.z, res.orientation.w
+        ))
+
     def update(self):
-        try:
-            self.fps = 1.0 / (time.time() - self.last_update_time)
-            self.func_update(self)
-        except Exception as e:
-            print(e)
-        finally:
-            self.last_update_time = time.time()
+        self.func_update(self)
+        # try:
+        #     self.fps = 1.0 / (time.time() - self.last_update_time)
+        #     self.func_update(self)
+        # except Exception as e:
+        #     print(e)
+        # finally:
+        #     self.last_update_time = time.time()
