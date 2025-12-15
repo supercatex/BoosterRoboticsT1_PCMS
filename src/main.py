@@ -66,7 +66,7 @@ def update(self: MainController):
 if __name__ == "__main__":
     try:
         rclpy.init()
-        node = MainController(setup, update)
+        node = MainController(setup, update, 0.05)
         rclpy.spin(node)
     except Exception as e:
         print(e)
